@@ -15,31 +15,49 @@ app = func.FunctionApp(http_auth_level=func.AuthLevel.ANONYMOUS)
 def TokenCounter(req: func.HttpRequest) -> func.HttpResponse:
     """
     Handle TokenCounter POST requests by counting request and response tokens.
+    
+    This function extracts the request and response bodies from the incoming request,
+    tokenizes them using the Llama tokenizer, and returns token counts.
+    
+    Args:
+        req: The HTTP request containing RequestBody and ResponseBody fields
+        
+    Returns:
+        HTTP response with token usage metrics (prompt_tokens, completion_tokens, total_tokens)
     """
     logging.info("Python HTTP trigger function processed a request.")
+    
+    # Authenticate with Hugging Face
     login(token=os.environ.get("HF_TOKEN", ""))
 
+    # Initialize tokenizer for Llama model
     tokenizer = AutoTokenizer.from_pretrained("meta-llama/Meta-Llama-3-8B-Instruct")
 
     try:
+        # Parse incoming request body
         request_body = req.get_json()
-        logger.info(f"Parsed RequestBody: {request_body}")
+        logger.info(f"Received request body: {request_body}")
 
-        request_body_text = str(request_body.get("RequestBody", ""))
-        response_body_text = str(request_body.get("ResponseBody", ""))
+        # Extract request and response body strings
+        request_body_json_str = str(request_body.get("RequestBody", ""))
+        response_body_json_str = str(request_body.get("ResponseBody", ""))
 
-        # Parse strings as JSON
-        request_json = json.loads(request_body_text)
-        response_json = json.loads(response_body_text)
-        logger.info(f"Parsed RequestBody: {request_json}")
+        # Parse JSON strings into objects
+        request_json = json.loads(request_body_json_str)
+        response_json = json.loads(response_body_json_str)
+        logger.info(f"Parsed request JSON: {request_json}")
 
-        # Extract message from response
-        message = (
-            response_json.get("choices", [{}])[0].get("message", {}).get("content", "")
-        )
-        logger.info(f"Extracted message: {message}")
+        # Extract completion message content from response
+        # Navigate: response -> choices[0] -> message -> content
+        choices = response_json.get("choices", [{}])
+        first_choice = choices[0] if choices else {}
+        message_obj = first_choice.get("message", {})
+        completion_message = message_obj.get("content", "")
+        
+        logger.info(f"Extracted completion message: {completion_message}")
 
-    except json.JSONDecodeError:
+    except json.JSONDecodeError as e:
+        logger.error(f"JSON decode error: {e}")
         return func.HttpResponse(
             json.dumps(
                 {
@@ -49,26 +67,29 @@ def TokenCounter(req: func.HttpRequest) -> func.HttpResponse:
                         "total_tokens": 0,
                     }
                 }
-            )
+            ),
+            status_code=200,
         )
 
-    logger.debug(tokenizer.tokenize(request_body_text))
-    logger.debug(tokenizer.tokenize(response_body_text))
+    # Tokenize request and response for debugging
+    logger.debug(f"Request tokens: {tokenizer.tokenize(request_body_json_str)}")
+    logger.debug(f"Completion tokens: {tokenizer.tokenize(completion_message)}")
 
-    promptTokens = len(tokenizer.tokenize(request_body_text))
-    completionTokens = len(tokenizer.tokenize(message))
+    # Count tokens in request and completion
+    prompt_tokens = len(tokenizer.tokenize(request_body_json_str))
+    completion_tokens = len(tokenizer.tokenize(completion_message))
+    total_tokens = prompt_tokens + completion_tokens
 
-    totalTokens = promptTokens + completionTokens
-
+    # Prepare response with token counts
     response_data = {
         "usage": {
-            "prompt_tokens": promptTokens,
-            "completion_tokens": completionTokens,
-            "total_tokens": totalTokens,
+            "prompt_tokens": prompt_tokens,
+            "completion_tokens": completion_tokens,
+            "total_tokens": total_tokens,
         }
     }
 
-    logger.info(f"Number of tokens: {response_data}")
+    logger.info(f"Token counts: {response_data}")
 
     return func.HttpResponse(
         json.dumps(response_data),
