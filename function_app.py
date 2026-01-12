@@ -71,13 +71,16 @@ def TokenCounter(req: func.HttpRequest) -> func.HttpResponse:
             status_code=200,
         )
 
-    # Tokenize request and response for debugging
-    logger.debug(f"Request tokens: {tokenizer.tokenize(request_body_json_str)}")
-    logger.debug(f"Completion tokens: {tokenizer.tokenize(completion_message)}")
+    # Tokenize request and response
+    request_tokens = tokenizer.tokenize(request_body_json_str)
+    completion_tokens_list = tokenizer.tokenize(completion_message)
+    
+    logger.debug(f"Request tokens: {request_tokens}")
+    logger.debug(f"Completion tokens: {completion_tokens_list}")
 
     # Count tokens in request and completion
-    prompt_tokens = len(tokenizer.tokenize(request_body_json_str))
-    completion_tokens = len(tokenizer.tokenize(completion_message))
+    prompt_tokens = len(request_tokens)
+    completion_tokens = len(completion_tokens_list)
     total_tokens = prompt_tokens + completion_tokens
 
     # Prepare response with token counts
